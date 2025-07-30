@@ -1,0 +1,9 @@
+build/
+managed_components/
+sdkconfig.old
+**/*.o
+**/*bin
+**/*.swp
+**/*.swo
+**/*.gcda
+**/*.gcno
