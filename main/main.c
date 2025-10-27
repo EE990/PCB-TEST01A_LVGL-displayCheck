@@ -31,6 +31,7 @@
 #include "esp_lcd_panel_240320W-C001.h"
 #include "esp_lcd_panel_XF024QV16A.h"
 #include "esp_lcd_panel_XF024QV06A.h"
+#include "esp_lcd_panel_XF024QV04B.h"
 
 #include "stdlib.h"
 #include "string.h"
@@ -59,6 +60,7 @@
 #endif // !CONFIG_DRAW_DEMO_IMG_SOURCE
 
 #define EXAMPLE_LCD_GPIO_SPI_BL         (GPIO_NUM_1)
+#define EXAMPLE_LCD_GPIO_LVCD_EN         (GPIO_NUM_15)// !!!原本的 I8080 的 I8080_WR1,改為 LVCD_EN
 /* LCD IO and panel */
 static esp_lcd_panel_io_handle_t lcd_io = NULL;
 static esp_lcd_panel_handle_t lcd_panel = NULL;
@@ -90,10 +92,11 @@ typedef struct
 
 //目前 bits_per_pixel 只設定 16bit
 const _lcd_info_t lcd_info[] = {
-    {"240320W_C001"     , "ST7789P3", "null",NULL     , NULL                           , esp_lcd_new_panel_240320WC001, EXAMPLE_LCD_GPIO_SPI_RST  , _240320WC001_INTERFACE_SPI, 320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3.1, 120},
-    {"240320W_C001_test", "ST7789P3", "null","測試用" , NULL                           , esp_lcd_new_panel_240320WC001, EXAMPLE_LCD_GPIO_SPI_RST  , _240320WC001_INTERFACE_SPI, 240, 160, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3.1, 120},
-    {"XF024QV16A"       , "ST7789P3", "null",NULL     , esp_lcd_new_panel_xf024qv16a,  esp_lcd_new_panel_xf024qv16a   , CONFIG_ESP32_I8080_PIN_RST, -1,                         320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 6, 80},
-    {"XF024QV06A"       , "Jd9853"  , "null",NULL     , NULL                           ,esp_lcd_new_panel_xf024qv06a  , EXAMPLE_LCD_GPIO_SPI_RST  , XF024QV06A_INTERFACE_QSPI,  320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3, 80},
+    {"240320W_C001"     , "ST7789P3", "null","SPI介面"              , NULL                           , esp_lcd_new_panel_240320WC001, EXAMPLE_LCD_GPIO_SPI_RST  , _240320WC001_INTERFACE_SPI, 320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3.1, 120},
+    {"240320W_C001_test", "ST7789P3", "null","測試用,SPI介面"        , NULL                           , esp_lcd_new_panel_240320WC001, EXAMPLE_LCD_GPIO_SPI_RST  , _240320WC001_INTERFACE_SPI, 240, 160, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3.1, 120},
+    {"XF024QV16A"       , "ST7789P3", "null","I8080介面"            , esp_lcd_new_panel_xf024qv16a,  esp_lcd_new_panel_xf024qv16a   , CONFIG_ESP32_I8080_PIN_RST, -1,                         320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 6, 80},
+    {"XF024QV06A"       , "Jd9853"  , "null","QSPI介面"             , NULL                           ,esp_lcd_new_panel_xf024qv06a  , EXAMPLE_LCD_GPIO_SPI_RST  , XF024QV06A_INTERFACE_QSPI,  320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3, 80},
+    {"XF024QV04B(SPI)"  , "ST7789V" , "null","SPI介面"              , NULL                           ,esp_lcd_new_panel_xf024qv04b  , EXAMPLE_LCD_GPIO_SPI_RST  , XF024QV04B_INTERFACE_SPI,  320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3, 80},
     {"end"              , "null"    , "null",NULL , -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},   //null 用於結尾
 };
 
@@ -106,7 +109,7 @@ display_config_t display_config={
                     "240320W_C001_test\n"
                     "XF024QV16A\n"
                     "XF024QV06A\n"
-                    "null\n"
+                    "XF024QV04B(SPI)\n"
                     "null\n"
                     "null\n"
                     "null\n"
@@ -158,7 +161,7 @@ static int screen1_button1_function_count=1;
 bool button1FunEn_img1=true;
 bool button1FunEn_img2=0;
 bool button1FunEn_img3=0;
-bool button1FunEn_img4=0;
+bool button1FunEn_img4=true;
 bool button1FunEn_img5=0;
 bool button1FunEn_img6=0;
 bool button1FunEn_colorBar=true;
@@ -902,15 +905,23 @@ void screen1_button2_function(void)
         gpio_set_level(EXAMPLE_LCD_GPIO_SPI_BL, BK_light_state);
 
         //關閉LCD
-        vTaskDelay(5/portTICK_PERIOD_MS);
+        vTaskDelay(50/portTICK_PERIOD_MS);
         esp_lcd_panel_disp_on_off(lcd_panel, false);//關閉LCD
         LCD_power_mode=0;
 
+        //關閉LVCD_EN
+        gpio_set_level(EXAMPLE_LCD_GPIO_LVCD_EN, 0);
+
         //等待LCD關閉完成
-        vTaskDelay(10/portTICK_PERIOD_MS);
+        vTaskDelay(50/portTICK_PERIOD_MS);
     }
     else
     {
+        //開啟LVCD_EN
+        gpio_set_level(EXAMPLE_LCD_GPIO_LVCD_EN, 1);
+        //delay 50ms,等待電壓穩定
+        vTaskDelay(50/portTICK_PERIOD_MS);
+
         //重新初始化LCD
         esp_lcd_panel_reset(lcd_panel);
         esp_lcd_panel_init(lcd_panel);
@@ -1280,6 +1291,21 @@ void init_gpio()
         gpio_config(&io_conf3);
         gpio_set_level(EXAMPLE_LCD_GPIO_SPI_BL, 1);//初始狀態固定為1
     }
+
+    // init lvcd_en  gpio
+    if(EXAMPLE_LCD_GPIO_LVCD_EN>0)
+    {
+        gpio_reset_pin(EXAMPLE_LCD_GPIO_LVCD_EN);
+        gpio_config_t io_conf4 = {
+            .pin_bit_mask = (1ULL << EXAMPLE_LCD_GPIO_LVCD_EN),  // 选择要配置的引脚
+            .mode = GPIO_MODE_OUTPUT,               // 设置为输入模式
+            .pull_up_en = GPIO_PULLUP_DISABLE,      // 禁用内部上拉
+            .pull_down_en = GPIO_PULLDOWN_DISABLE, // 禁用内部下拉
+            .intr_type = GPIO_INTR_DISABLE         // 禁用中断
+        };
+        gpio_config(&io_conf4);
+        gpio_set_level(EXAMPLE_LCD_GPIO_LVCD_EN, 1);//初始狀態固定為1
+    }
 }
 
 void app_main(void)
@@ -1290,14 +1316,14 @@ void app_main(void)
 
     #if defined(CONFIG_IDF_TARGET_ESP32)
     //********** 切換 UART0 的 TX.RX 為 GPIO **********
-    // switch_uart0_to_gpio();
+    switch_uart0_to_gpio();
     #endif
 
     //********** 初始化 GPIO **********
     init_gpio();
 
     //********** 切換 UART0 的 TX.RX 為 GPIO **********
-    switch_gpio_to_uart0();
+    // switch_gpio_to_uart0();
     printf("\n");
 
     //********** 初始化 NVS,只有沒設置過的 flash 區段才會寫入預設值 **********
