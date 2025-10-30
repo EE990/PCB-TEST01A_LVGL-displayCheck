@@ -5,6 +5,7 @@
  */
 
  #include <stdlib.h>
+ #include <string.h>
  #include <sys/cdefs.h>
  #include "sdkconfig.h"
  #include "esp_lcd_panel_XF024QV04B.h"
@@ -84,7 +85,7 @@
  
  esp_err_t
  esp_lcd_new_panel_xf024qv04b(const esp_lcd_panel_io_handle_t *io, const esp_lcd_panel_dev_config_t *panel_dev_config,
-                          esp_lcd_panel_handle_t *ret_panel,int interfasce,size_t interfasce_buffer_size)
+                          esp_lcd_panel_handle_t *ret_panel,char *interfasce_str,size_t interfasce_buffer_size)
  {
  #if CONFIG_LCD_ENABLE_DEBUG_LOG
      esp_log_level_set(TAG, ESP_LOG_DEBUG);
@@ -95,7 +96,7 @@
      LCD = calloc(1, sizeof(_xf024qv04b_panel_t));
      ESP_GOTO_ON_FALSE(LCD, ESP_ERR_NO_MEM, err, TAG, "no mem for _xf024qv04b panel");
  
-     if(interfasce == XF024QV04B_INTERFACE_SPI)//SPI    
+     if(strcmp(interfasce_str, "SPI") == 0)//SPI    
      {
          panel_xf024qv04b_bus_SPI_init(interfasce_buffer_size, io);
      }

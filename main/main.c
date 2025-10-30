@@ -10,6 +10,11 @@
 /////
 ////*************************************************************** */
 
+// 專案配置 "Log output" "Bootloader log verbosity" 可關閉大部分開機 LOG 輸出
+// LOG UART 腳位與 "BK relay" "I8080_RST" 等重疊,
+// 若要使用LOG UART,需將此值設為1,且 "BK relay" "I8080_RST" 將無法使用
+#define LOG_OUTPUT_ENABLE 0 // 0:disable, 1:enable
+
 #define CONFIG_USE_LCD_240320W_C001 1
 #define CONFIG_USE_LCD_XF024QV16A 0
 #define CONFIG_USE_LCD_XF024QV06A 0
@@ -35,6 +40,8 @@
 
 #include "stdlib.h"
 #include "string.h"
+#include "hal/gpio_hal.h"
+#include "esp_sleep.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_check.h"
@@ -50,6 +57,19 @@
 
 #include "nvs_display_config.h"
 
+#if defined(CONFIG_IDF_TARGET_ESP32)
+ #if LOG_OUTPUT_ENABLE==1
+  #define SWITCH_UART0_TO_GPIO() 
+  #define SWITCH_GPIO_TO_UART0() switch_gpio_to_uart0()
+ #else   
+  #define SWITCH_UART0_TO_GPIO() switch_uart0_to_gpio()
+  #define SWITCH_GPIO_TO_UART0() 
+ #endif
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+ #define SWITCH_UART0_TO_GPIO() 
+ #define SWITCH_GPIO_TO_UART0() 
+#endif
+
 /***************************************** LCD 設定 ****************************************/
 
 /* LCD settings */
@@ -60,7 +80,15 @@
 #endif // !CONFIG_DRAW_DEMO_IMG_SOURCE
 
 #define EXAMPLE_LCD_GPIO_SPI_BL         (GPIO_NUM_1)
+
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#define EXAMPLE_LCD_GPIO_LVCD_EN         (GPIO_NUM_48)// !!!原本的 I8080 的 I8080_WR1,改為 LVCD_EN
+#elif defined(CONFIG_IDF_TARGET_ESP32)
 #define EXAMPLE_LCD_GPIO_LVCD_EN         (GPIO_NUM_15)// !!!原本的 I8080 的 I8080_WR1,改為 LVCD_EN
+#else
+#error "Not supported"
+#endif
+
 /* LCD IO and panel */
 static esp_lcd_panel_io_handle_t lcd_io = NULL;
 static esp_lcd_panel_handle_t lcd_panel = NULL;
@@ -75,10 +103,10 @@ typedef struct
     char *driver_IC_name;
     char *touch_IC_name;
     char *notes;
-    esp_err_t (*init_lcd_single_interface)(esp_lcd_panel_io_handle_t *lcd_io, esp_lcd_panel_dev_config_t *panel_config, esp_lcd_panel_handle_t *lcd_panel, int buffer_size);
-    esp_err_t (*init_lcd_multi_interface)(esp_lcd_panel_io_handle_t *lcd_io, esp_lcd_panel_dev_config_t *panel_config, esp_lcd_panel_handle_t *lcd_panel, int interface, int buffer_size);
+    esp_err_t (*init_lcd_single_interface)(esp_lcd_panel_io_handle_t *lcd_io, esp_lcd_panel_dev_config_t *panel_config, esp_lcd_panel_handle_t *lcd_panel, int buffer_size);// 初始化LCD,固定所選用的介面(interface無用)
+    esp_err_t (*init_lcd_multi_interface)(esp_lcd_panel_io_handle_t *lcd_io, esp_lcd_panel_dev_config_t *panel_config, esp_lcd_panel_handle_t *lcd_panel, int interface, int buffer_size);// 初始化LCD,需選擇所用介面(由interface決定)
     int lcd_rst_pin;
-    int interface;
+    int interface;//init_lcd_multi_interface() 所選用的介面
     int h_res;
     int v_res;
     int color_space;
@@ -92,11 +120,11 @@ typedef struct
 
 //目前 bits_per_pixel 只設定 16bit
 const _lcd_info_t lcd_info[] = {
-    {"240320W_C001"     , "ST7789P3", "null","SPI介面"              , NULL                           , esp_lcd_new_panel_240320WC001, EXAMPLE_LCD_GPIO_SPI_RST  , _240320WC001_INTERFACE_SPI, 320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3.1, 120},
-    {"240320W_C001_test", "ST7789P3", "null","測試用,SPI介面"        , NULL                           , esp_lcd_new_panel_240320WC001, EXAMPLE_LCD_GPIO_SPI_RST  , _240320WC001_INTERFACE_SPI, 240, 160, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3.1, 120},
-    {"XF024QV16A"       , "ST7789P3", "null","I8080介面"            , esp_lcd_new_panel_xf024qv16a,  esp_lcd_new_panel_xf024qv16a   , CONFIG_ESP32_I8080_PIN_RST, -1,                         320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 6, 80},
-    {"XF024QV06A"       , "Jd9853"  , "null","QSPI介面"             , NULL                           ,esp_lcd_new_panel_xf024qv06a  , EXAMPLE_LCD_GPIO_SPI_RST  , XF024QV06A_INTERFACE_QSPI,  320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3, 80},
-    {"XF024QV04B(SPI)"  , "ST7789V" , "null","SPI介面"              , NULL                           ,esp_lcd_new_panel_xf024qv04b  , EXAMPLE_LCD_GPIO_SPI_RST  , XF024QV04B_INTERFACE_SPI,  320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3, 80},
+    {"240320W_C001"     , "ST7789P3", "null",NULL      , NULL                           , esp_lcd_new_panel_240320WC001, EXAMPLE_LCD_GPIO_SPI_RST  , "SPI",     320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3.1, 120},
+    {"240320W_C001_test", "ST7789P3", "null","測試用"   , NULL                           , esp_lcd_new_panel_240320WC001, EXAMPLE_LCD_GPIO_SPI_RST  , "SPI",     240, 160, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3.1, 120},
+    {"XF024QV16A"       , "ST7789P3", "null",NULL      , esp_lcd_new_panel_xf024qv16a_i80,  NULL                        , CONFIG_ESP32_I8080_PIN_RST, "I8080",   320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 6, 80},
+    {"XF024QV06A"       , "Jd9853"  , "null",NULL      , NULL                           ,esp_lcd_new_panel_xf024qv06a  , EXAMPLE_LCD_GPIO_SPI_RST  , "QSPI",    320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3, 80},
+    {"XF024QV04B(SPI)"  , "ST7789V" , "null",NULL      , NULL                           ,esp_lcd_new_panel_xf024qv04b  , EXAMPLE_LCD_GPIO_SPI_RST  , "SPI",     320, 240, ESP_LCD_COLOR_SPACE_RGB, EXAMPLE_LCD_BITS_PER_PIXEL, 50, 1, 1, 3, 80},
     {"end"              , "null"    , "null",NULL , -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},   //null 用於結尾
 };
 
@@ -259,9 +287,13 @@ static esp_err_t app_lcd_init(void)
     {
         ESP_GOTO_ON_ERROR(lcd_info_now.init_lcd_single_interface(&lcd_io, &panel_config, &lcd_panel,lcd_info_now.h_res * lcd_info_now.draw_buff_height * sizeof(uint16_t)), err, TAG, "New panel failed");
     }
-    else
+    else if(lcd_info_now.init_lcd_multi_interface)
     {
         ESP_GOTO_ON_ERROR(lcd_info_now.init_lcd_multi_interface(&lcd_io, &panel_config, &lcd_panel,lcd_info_now.interface,lcd_info_now.h_res * lcd_info_now.draw_buff_height * sizeof(uint16_t)), err, TAG, "New panel failed");
+    }
+    else
+    {
+        ESP_GOTO_ON_ERROR(ESP_ERR_NOT_SUPPORTED, err, TAG, "init_lcd_single_interface or init_lcd_multi_interface not supported");
     }
     
     esp_lcd_panel_reset(lcd_panel);
@@ -530,24 +562,24 @@ _lcd_info_t* get_lcd_info(char *name)
 }
 
 /**
- * @brief 檢測 button2 是否常按,切換到配置頁面
- * @return 是否切換到配置頁面
- * true: 切換到配置頁面
- * false: 不須切換到配置頁面
+ * @brief 檢測 button2 是否常按
+ * @return 是否觸發長按
+ * true: 觸發
+ * false: 沒觸發
  */
 bool check_button2_long_press(void)
 {
     bool ret=false;
     static int button2_long_press_count=0;
 
-    // 檢測 button2 是否常按,切換到頁面2
+    // 檢測 button2 是否常按
     while(gpio_get_level(BUTTON2_GPIO)==0)
     {
         vTaskDelay(10/portTICK_PERIOD_MS);
         button2_long_press_count++;
         if(button2_long_press_count>=250)//250*10ms=2.5s
         {
-            //********** 確認切換到配置頁面 **********
+            //********** 確認觸發長按 **********
             ret=true;
 
             break;
@@ -914,6 +946,15 @@ void screen1_button2_function(void)
 
         //等待LCD關閉完成
         vTaskDelay(50/portTICK_PERIOD_MS);
+
+        // BUTTON2 為回彈按鍵, 等待按鍵回復 
+        while(gpio_get_level(BUTTON2_GPIO)==0)
+        {
+            vTaskDelay(100/portTICK_PERIOD_MS);
+        }
+
+        //進入深度睡眠
+        esp_deep_sleep_start();
     }
     else
     {
@@ -1082,6 +1123,7 @@ void button_task(void * arg)
         .intr_type = GPIO_INTR_DISABLE         // 禁用中断
     };
     gpio_config(&io_conf2);
+    esp_sleep_enable_ext0_wakeup(BUTTON2_GPIO, 0);
 
     // init button3  gpio
     gpio_config_t io_conf3 = {
@@ -1265,6 +1307,7 @@ void init_gpio()
         .intr_type = GPIO_INTR_DISABLE         // 禁用中断
     };
     gpio_config(&io_conf2);
+    esp_sleep_enable_ext0_wakeup(BUTTON2_GPIO, 0);
 
     // init button3  gpio
     gpio_config_t io_conf3 = {
@@ -1276,21 +1319,6 @@ void init_gpio()
     };
     gpio_config(&io_conf3);
     button3_state=gpio_get_level(BUTTON3_GPIO);
-
-    // init bk  gpio
-    if(EXAMPLE_LCD_GPIO_SPI_BL>0)
-    {
-        gpio_reset_pin(EXAMPLE_LCD_GPIO_SPI_BL);
-        gpio_config_t io_conf3 = {
-            .pin_bit_mask = (1ULL << EXAMPLE_LCD_GPIO_SPI_BL),  // 选择要配置的引脚
-            .mode = GPIO_MODE_OUTPUT,               // 设置为输入模式
-            .pull_up_en = GPIO_PULLUP_DISABLE,      // 禁用内部上拉
-            .pull_down_en = GPIO_PULLDOWN_DISABLE, // 禁用内部下拉
-            .intr_type = GPIO_INTR_DISABLE         // 禁用中断
-        };
-        gpio_config(&io_conf3);
-        gpio_set_level(EXAMPLE_LCD_GPIO_SPI_BL, 1);//初始狀態固定為1
-    }
 
     // init lvcd_en  gpio
     if(EXAMPLE_LCD_GPIO_LVCD_EN>0)
@@ -1306,6 +1334,24 @@ void init_gpio()
         gpio_config(&io_conf4);
         gpio_set_level(EXAMPLE_LCD_GPIO_LVCD_EN, 1);//初始狀態固定為1
     }
+
+    // delay ,開啟 LVCD 和 BK 的緩衝
+    vTaskDelay(50/portTICK_PERIOD_MS);
+
+    // init bk  gpio
+    if(EXAMPLE_LCD_GPIO_SPI_BL>0)
+    {
+        gpio_reset_pin(EXAMPLE_LCD_GPIO_SPI_BL);
+        gpio_config_t io_conf3 = {
+            .pin_bit_mask = (1ULL << EXAMPLE_LCD_GPIO_SPI_BL),  // 选择要配置的引脚
+            .mode = GPIO_MODE_OUTPUT,               // 设置为输入模式
+            .pull_up_en = GPIO_PULLUP_DISABLE,      // 禁用内部上拉
+            .pull_down_en = GPIO_PULLDOWN_DISABLE, // 禁用内部下拉
+            .intr_type = GPIO_INTR_DISABLE         // 禁用中断
+        };
+        gpio_config(&io_conf3);
+        gpio_set_level(EXAMPLE_LCD_GPIO_SPI_BL, 1);//初始狀態固定為1
+    }
 }
 
 void app_main(void)
@@ -1314,16 +1360,14 @@ void app_main(void)
     lv_obj_t ** ui_first_screen;
     ui_first_screen=&ui_Screen1;
 
-    #if defined(CONFIG_IDF_TARGET_ESP32)
-    //********** 切換 UART0 的 TX.RX 為 GPIO **********
-    switch_uart0_to_gpio();
-    #endif
+    //********** 切換 UART0 的 PIN 腳切換為 GPIO **********
+    SWITCH_UART0_TO_GPIO();//LOG_OUTPUT_ENABLE==1 時,不會執行
 
     //********** 初始化 GPIO **********
     init_gpio();
 
-    //********** 切換 UART0 的 TX.RX 為 GPIO **********
-    // switch_gpio_to_uart0();
+    //********** 切換 UART0 的 PIN 腳切換為 TX.RX  **********
+    SWITCH_GPIO_TO_UART0();//LOG_OUTPUT_ENABLE==0 時,不會執行
     printf("\n");
 
     //********** 初始化 NVS,只有沒設置過的 flash 區段才會寫入預設值 **********
@@ -1373,7 +1417,7 @@ void app_main(void)
     }
 
     //********** 檢測 button2 是否長按,切換到頁面2 **********
-    if(check_button2_long_press())
+    if(check_button2_long_press()==true && esp_sleep_get_wakeup_cause()==ESP_SLEEP_WAKEUP_UNDEFINED)//硬體重啟(重新上電或按RESET鍵)後長按,才會觸發
     {
         ui_first_screen=&ui_Screen2;
         //強制切換為主顯示器

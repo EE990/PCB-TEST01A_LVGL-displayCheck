@@ -14,12 +14,6 @@
 
 #include "driver/spi_master.h"
 
-//列舉xf024qv06a的介面
-typedef enum{
-    XF024QV06A_INTERFACE_SPI = 0,
-    XF024QV06A_INTERFACE_QSPI = 1,
-}xf024qv06a_interface_t;
-
 // #define CONFIG_LCD_QSPI_ENABLE (1)
 // #if (CONFIG_LCD_QSPI_ENABLE!=0) && !defined(CONFIG_IDF_TARGET_ESP32S3)
 // #error "QSPI LCD only supported on ESP32-S3 with proper configuration and drivers."
@@ -53,6 +47,6 @@ typedef enum{
 #define EXAMPLE_LCD_GPIO_SPI_CS         (GPIO_NUM_5)
 #endif
 
-    extern esp_err_t esp_lcd_new_panel_xf024qv06a(const esp_lcd_panel_io_handle_t *io, const esp_lcd_panel_dev_config_t *panel_dev_config,esp_lcd_panel_handle_t *ret_panel,int interfasce,size_t interfasce_buffer_size);
+extern esp_err_t esp_lcd_new_panel_xf024qv06a(const esp_lcd_panel_io_handle_t *io, const esp_lcd_panel_dev_config_t *panel_dev_config,esp_lcd_panel_handle_t *ret_panel,char *interfasce_str,size_t interfasce_buffer_size);
 
 #endif

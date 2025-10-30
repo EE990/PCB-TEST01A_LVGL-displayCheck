@@ -99,7 +99,7 @@ esp_err_t panel_xf024qv16a_bus_i80_init(size_t buffer_size, const esp_lcd_panel_
 }
 
 esp_err_t
-esp_lcd_new_panel_xf024qv16a(const esp_lcd_panel_io_handle_t *io, const esp_lcd_panel_dev_config_t *panel_dev_config,
+esp_lcd_new_panel_xf024qv16a_i80(const esp_lcd_panel_io_handle_t *io, const esp_lcd_panel_dev_config_t *panel_dev_config,
                          esp_lcd_panel_handle_t *ret_panel,size_t interface_buffer_size)
 {
 #if CONFIG_LCD_ENABLE_DEBUG_LOG

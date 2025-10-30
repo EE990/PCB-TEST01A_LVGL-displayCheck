@@ -78,7 +78,10 @@
     "nvs_display_config.h": "c",
     "nvs_flash.h": "c",
     "uart.h": "c",
-    "lv_global.h": "c"
+    "lv_global.h": "c",
+    "esp_log.h": "c",
+    "cstdint": "c",
+    "esp_lcd_panel_xf024qv04b.h": "c"
   },
   "idf.pythonInstallPath": "c:\\Users\\XSE-R\\Documents\\ESP32_project\\IDF\\tools\\idf-python\\3.11.2\\python.exe",
   "C_Cpp.errorSquiggles": "disabled"

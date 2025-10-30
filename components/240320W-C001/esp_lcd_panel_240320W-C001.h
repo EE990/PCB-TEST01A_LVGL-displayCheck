@@ -14,11 +14,6 @@
 
 #include "driver/spi_master.h"
 
-//列舉240320W-C001的介面
-typedef enum{
-    _240320WC001_INTERFACE_SPI = 0,
-} _240320WC001_interface_t;
-
 #define EXAMPLE_LCD_SPI_NUM         (SPI2_HOST)
 #define EXAMPLE_LCD_PIXEL_CLK_HZ    (40 * 1000 * 1000)
 #define EXAMPLE_LCD_CMD_BITS        (8)
@@ -45,6 +40,6 @@ typedef enum{
 #define EXAMPLE_LCD_GPIO_SPI_CS         (GPIO_NUM_5)
 #endif
 
-extern esp_err_t esp_lcd_new_panel_240320WC001(const esp_lcd_panel_io_handle_t *io, const esp_lcd_panel_dev_config_t *panel_dev_config,esp_lcd_panel_handle_t *ret_panel,int interfasce,size_t interfasce_buffer_size);
+extern esp_err_t esp_lcd_new_panel_240320WC001(const esp_lcd_panel_io_handle_t *io, const esp_lcd_panel_dev_config_t *panel_dev_config,esp_lcd_panel_handle_t *ret_panel,char *interfasce_str,size_t interfasce_buffer_size);
 
 #endif
